@@ -1,0 +1,125 @@
+// =============================================
+// 1. LOAD KENYA BOUNDARY (SHAPEFILE OR BUILT-IN)
+// =============================================
+
+// Option A: Use built-in Kenya boundary (FAO GAUL)
+var kenya = ee.FeatureCollection("FAO/GAUL/2015/level0")
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
+
+// Option B: If you uploaded a custom shapefile, use:
+// var kenya = ee.FeatureCollection("users/your_username/kenya_shapefile");
+
+// Set Region of Interest (ROI) to Kenya's bounds
+var roi = kenya.geometry().bounds();
+// =============================================
+// 2. LOAD LANDSAT 8 IMAGERY (2024, <10% CLOUDS)
+// =============================================
+
+// Load Landsat 8 TOA (Top of Atmosphere) collection
+var landsat = ee.ImageCollection("LANDSAT/LC08/C02/T1_TOA")
+  .filterDate('2015-01-01', '2015-12-31') // Date range
+  .filterBounds(roi) // Filter to Kenya
+  .filterMetadata('CLOUD_COVER', 'less_than', 15); // Cloud cover <10%
+
+// Create a cloud-free mosaic and clip to Kenya
+var mosaic = landsat.mosaic().clip(kenya);
+
+// Display true-color composite (B4=Red, B3=Green, B2=Blue)
+var visParams = {bands: ['B4', 'B3', 'B2'], min: 0.05, max: 0.3, gamma: 1.3};
+Map.addLayer(mosaic, visParams, 'Landsat 8 Mosaic (True Color)');
+// Display Kenya on the map
+Map.centerObject(roi, 6); // Zoom level 6
+Map.addLayer(kenya, {color: 'red'}, 'Kenya Boundary');
+// =============================================
+// 3. CREATE TRAINING DATA (MANUAL POINTS OR IMPORTS)
+// =============================================
+
+// Define land cover classes (replace coordinates with your own samples)
+var builtUpPoints = [
+  ee.Geometry.Point([36.82, -1.29]),
+  ee.Geometry.Point([35.28, -0.09])
+];
+var builtUp = ee.FeatureCollection(builtUpPoints.map(function(pt) {
+  return ee.Feature(pt).set('class', 0);
+}));
+
+// Class 1: Water
+var waterPoints = [
+  ee.Geometry.Point([36.98, -0.42]), // Lake Naivasha
+  ee.Geometry.Point([34.89, 0.21])   // Lake Victoria
+];
+var water = ee.FeatureCollection(waterPoints.map(function(pt) {
+  return ee.Feature(pt).set('class', 1);
+}));
+
+// Class 2: Forest
+var forestPoints = [
+  ee.Geometry.Point([37.25, -0.30]), // Aberdare
+  ee.Geometry.Point([35.15, -0.38])  // Mau
+];
+var forest = ee.FeatureCollection(forestPoints.map(function(pt) {
+  return ee.Feature(pt).set('class', 2);
+}));
+
+// Class 3: Agriculture
+var agriPoints = [
+  ee.Geometry.Point([37.15, -0.52]), // Central Kenya
+  ee.Geometry.Point([34.76, 0.53])   // Western Kenya
+];
+var agriculture = ee.FeatureCollection(agriPoints.map(function(pt) {
+  return ee.Feature(pt).set('class', 3);
+}));
+// Merge all training classes
+var trainingData = builtUp.merge(water).merge(forest).merge(agriculture);
+print('Training Data Sample:', trainingData.limit(5));
+
+// Visualize training points
+Map.addLayer(builtUp, {color: 'red'}, 'Urban Samples');
+Map.addLayer(water, {color: 'blue'}, 'Water Samples');
+Map.addLayer(forest, {color: 'green'}, 'Forest Samples');
+Map.addLayer(agriculture, {color: 'yellow'}, 'Agriculture Samples');
+
+// =============================================
+// 4. CLASSIFICATION
+// =============================================
+
+// Select bands for classification
+var bands = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7'];
+
+// Sample training pixels
+var trainingSamples = mosaic.select(bands).sampleRegions({
+  collection: trainingData,
+  properties: ['class'],
+  scale: 30
+});
+
+// Split into training (80%) and validation (20%)
+var split = trainingSamples.randomColumn();
+var trainSet = split.filter(ee.Filter.lt('random', 0.8));
+var testSet = split.filter(ee.Filter.gte('random', 0.8));
+
+// Train classifier (using CART)
+var classifier = ee.Classifier.smileCart().train({
+  features: trainSet,
+  classProperty: 'class',
+  inputProperties: bands
+});
+
+// Classify the image
+var classified = mosaic.select(bands).classify(classifier);
+
+// =============================================
+// 5. RESULTS AND EXPORT
+// =============================================
+
+// Define color palette
+var palette = ['red', 'blue', 'green', 'yellow'];
+
+// Display results
+Map.addLayer(classified, {min: 0, max: 3, palette: palette}, 'Land Cover');
+
+// Accuracy assessment
+var validation = testSet.classify(classifier);
+var confusionMatrix = validation.errorMatrix('class', 'classification');
+print('Confusion Matrix:', confusionMatrix);
+print('Overall Accuracy:', confusionMatrix.accuracy());
