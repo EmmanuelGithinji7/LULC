@@ -1,0 +1,88 @@
+// =============================================
+// 1. Define Kenya Boundary
+// =============================================
+
+// Use FAO country boundaries
+var kenya = ee.FeatureCollection("FAO/GAUL/2015/level0")
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
+
+// Get bounding box for Kenya
+var roi = kenya.geometry().bounds();
+
+// Display Kenya on map
+Map.centerObject(roi, 6);
+Map.addLayer(kenya, {color: 'FF0000'}, 'Kenya Boundary');
+
+// =============================================
+// 2. Load and Filter Sentinel-2 Data for 2025
+// =============================================
+
+// Define date range (full year 2025)
+var startDate = '2025-01-01';
+var endDate = '2025-5-7';
+
+// Load Sentinel-2 Surface Reflectance data
+var s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+  .filterBounds(roi)
+  .filterDate(startDate, endDate)
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 8)); // <20% cloud cover
+
+print('Number of images available:', s2.size());
+
+// =============================================
+// 3. Create Composite (All Bands)
+// =============================================
+
+// Create median composite (reduces cloud/noise effects)
+// Includes ALL Sentinel-2 bands
+var composite = s2.median().clip(roi);
+
+// Print band information
+print('Available bands:', composite.bandNames());
+
+// =============================================
+// 4. Visualize Different Band Combinations
+// =============================================
+
+// TRUE COLOR (B4-Red, B3-Green, B2-Blue)
+Map.addLayer(composite, {
+  bands: ['B4', 'B3', 'B2'],
+  min: 0,
+  max: 3000,
+  gamma: 1.3
+}, 'True Color (B4/B3/B2)');
+
+// FALSE COLOR (B8-NIR, B4-Red, B3-Green)
+Map.addLayer(composite, {
+  bands: ['B8', 'B4', 'B3'],
+  min: 0,
+  max: 3000,
+  gamma: 1.3
+}, 'False Color (B8/B4/B3)');
+
+// SWIR COMPOSITE (B12-SWIR, B8-NIR, B4-Red)
+Map.addLayer(composite, {
+  bands: ['B12', 'B8', 'B4'],
+  min: 0,
+  max: 3000,
+  gamma: 1.3
+}, 'SWIR Composite (B12/B8/B4)');
+
+// =============================================
+// 5. Export ALL Bands to Google Drive
+// =============================================
+
+Export.image.toDrive({
+  image: composite,
+  description: 'Kenya_S2_2025_FullBands',
+  folder: 'Sentinel2_Kenya',
+  region: roi,
+  scale: 10, // Native resolution for most bands
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF',
+  formatOptions: {
+    cloudOptimized: true
+  }
+});
+
+print('Export task created for full-band composite. Check Tasks tab to run.');
