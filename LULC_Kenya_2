@@ -1,8 +1,4 @@
-// ==============================================
 // KENYA LAND USE/LAND COVER ANALYSIS USING ESA WORLDCOVER
-// Complete GEE Script - Copy/Paste and Run
-// ==============================================
-
 // 1. Define Kenya boundary
 var kenya = ee.FeatureCollection("FAO/GAUL/2015/level0")
               .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
@@ -114,8 +110,8 @@ var chart = ui.Chart.feature.byFeature(finalResults, 'Class', 'Area_ha')
     vAxis: {title: 'Area (hectares)'},
     legend: {position: 'none'}
   });
-
 print(chart);
+
 // 7. Time-series change detection (2016-2021)
 var esaTimeSeries = ee.ImageCollection("ESA/WorldCover/v100")
                      .filterBounds(kenya)
@@ -178,9 +174,8 @@ Object.keys(kenyaClassNames).forEach(function(key) {
 
 Map.add(legend);
 
-// ==============================================
 // EXPORTS AND PRINT RESULTS
-// ==============================================
+
 
 // Print area statistics
 print('Area by Class (hectares):', ee.FeatureCollection(classAreas));
