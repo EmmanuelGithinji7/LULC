@@ -1,0 +1,150 @@
+// ==============================================
+// MODIS LAND USE LAND COVER ANALYSIS FOR KENYA
+// ==============================================
+
+// 1. Define Region of Interest (Kenya)
+var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
+Map.centerObject(kenya, 6);
+Map.addLayer(kenya, {color: 'gray'}, 'Kenya Boundary');
+
+// 2. Load MODIS Land Cover Data (MCD12Q1, 500m)
+var modisLandCover = ee.ImageCollection('MODIS/006/MCD12Q1');
+
+// Get latest available year (2022 as of 2024)
+var lcImage = modisLandCover.filterDate('2019-01-01', '2019-12-31')
+  .first()
+  .clip(kenya);
+
+// 3. Visualize IGBP Classification (17 classes)
+var igbpPalette = [
+  'aec3d4', // Water
+  '152106', '225129', '369b47', '30eb5b', '387242', // Forests
+  '6a2325', 'c3aa69', 'b76031', 'd9903d', '91af40', // Shrublands
+  '111149', // Grasslands
+  'cdb33b', // Croplands
+  'cc0013', // Urban
+  '33280d', // Cropland/Natural Mosaic
+  'd7cdcc', // Snow/Ice
+  'f7e084', // Barren
+  '6f6f6f'  // Unclassified
+];
+
+var igbpLandCover = lcImage.select('LC_Type1');
+Map.addLayer(igbpLandCover, 
+  {min: 1, max: 17, palette: igbpPalette}, 
+  'IGBP Land Cover');
+// 4. Create Legend
+var classNames = [
+  'Water', 'Evergreen Needleleaf', 'Evergreen Broadleaf', 
+  'Deciduous Needleleaf', 'Deciduous Broadleaf', 'Mixed Forest',
+  'Closed Shrubland', 'Open Shrubland', 'Woody Savanna',
+  'Savanna', 'Grassland', 'Permanent Wetland',
+  'Cropland', 'Urban', 'Cropland/Natural Mosaic',
+  'Snow/Ice', 'Barren', 'Unclassified'
+];
+
+// Create legend panel
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px'
+  }
+});
+
+// Add legend title
+var legendTitle = ui.Label({
+  value: 'IGBP Land Cover Classes',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '0'
+  }
+});
+legend.add(legendTitle);
+
+// Create and add the legend items
+for (var i = 0; i < classNames.length; i++) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: igbpPalette[i],
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  
+  var description = ui.Label({
+    value: (i+1) + '. ' + classNames[i],
+    style: {margin: '0 0 4px 6px'}
+  });
+  
+  var legendItem = ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+  
+  legend.add(legendItem);
+}
+
+// Add legend to map
+Map.add(legend);
+// 4. Calculate Area Statistics
+var areaImage = ee.Image.pixelArea().addBands(igbpLandCover);
+
+var areaStats = areaImage.reduceRegion({
+  reducer: ee.Reducer.sum().group({
+    groupField: 1,
+    groupName: 'class',
+  }),
+  geometry: kenya,
+  scale: 500,
+  maxPixels: 1e13
+});
+
+print('Area by Class (sqm)', areaStats);
+
+// 5. Create Pie Chart of Land Cover Distribution
+var classNames = [
+  'Water', 'Evergreen Needleleaf', 'Evergreen Broadleaf', 
+  'Deciduous Needleleaf', 'Deciduous Broadleaf', 'Mixed Forest',
+  'Closed Shrubland', 'Open Shrubland', 'Woody Savanna',
+  'Savanna', 'Grassland', 'Permanent Wetland',
+  'Cropland', 'Urban', 'Cropland/Natural Mosaic',
+  'Snow/Ice', 'Barren', 'Unclassified'
+];
+
+var chart = ui.Chart.image.byClass({
+  image: areaImage,
+  classBand: 'LC_Type1',
+  region: kenya,
+  reducer: ee.Reducer.sum(),
+  scale: 500,
+  classLabels: classNames
+}).setOptions({
+  title: 'Kenya Land Cover Distribution (2022)',
+  pieHole: 0.4,
+  pieSliceTextStyle: {fontSize: 10},
+  slices: [{color: 'aec3d4'}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}],
+});
+
+print(chart);
+
+// 6. Export Options
+// Export land cover image to Drive
+Export.image.toDrive({
+  image: igbpLandCover,
+  description: 'Kenya_LULC_MODIS_2022',
+  folder: 'GEE_Exports',
+  region: kenya,
+  scale: 500,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// Export area statistics as CSV
+Export.table.toDrive({
+  collection: ee.FeatureCollection(ee.Feature(null, areaStats.get('groups'))),
+  description: 'Kenya_LULC_Stats',
+  fileFormat: 'CSV'
+});
