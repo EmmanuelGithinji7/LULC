@@ -1,1 +1,184 @@
+// ==============================================
+// MODIS LAND USE LAND COVER ANALYSIS FOR KENYA
+// WITH CUSTOM CLASSES AND COLORS (AREA IN HA)
+// ==============================================
 
+// 1. Define Region of Interest (Kenya)
+var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
+Map.centerObject(kenya, 6);
+Map.addLayer(kenya, {color: 'gray'}, 'Kenya Boundary');
+
+// 2. Load MODIS Land Cover Data (MCD12Q1, 500m)
+var modisLandCover = ee.ImageCollection('MODIS/006/MCD12Q1');
+
+// Get latest available year (2022)
+var lcImage = modisLandCover.filterDate('2019-01-01', '2019-12-31')
+  .first();
+  
+// Clip after confirming the image exists
+if (lcImage) {
+  lcImage = lcImage.clip(kenya);
+} else {
+  throw new Error('No MODIS land cover image found for 2022');
+}
+
+// 3. Reclassify IGBP classes into custom categories with proper water mapping
+var customClasses = lcImage.select('LC_Type1').remap(
+  // Original IGBP class values (1 to 17):
+  [0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17],
+  // Mapped to Kenya 7-class scheme:
+  [4,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  6,  0,  3,  2,  6,  5,  4],
+  6  // Default value (Other)
+);
+
+
+// Explicitly set water class (IGBP 0) to our water class (4)
+customClasses = customClasses.where(lcImage.select('LC_Type1').eq(0), 4);
+
+// Custom class names and colors - with water properly mapped
+var kenyaClassNames = [
+  'Forest',             // 0
+  'Grassland/Rangeland', // 1
+  'Agriculture',        // 2
+  'Urban/Built-up',     // 3
+  'Water',              // 4 (now properly mapped)
+  'Bare Ground',        // 5
+  'Other'               // 6
+];
+
+var kenyaPalette = [
+  '006400', // Forest (dark green)
+  'd2b48c', // Grassland/Rangeland (tan)
+  'ffff00', // Agriculture (yellow)
+  'ff0000', // Urban/Built-up (red)
+  '0000ff', // Water (blue) - now will show for lakes
+  '8b4513', // Bare Ground (brown)
+  'ffffff'  // Other (white)
+];
+// Add to map
+Map.addLayer(customClasses, 
+  {min: 0, max: 6, palette: kenyaPalette}, 
+  'Kenya Land Cover (Custom Classes)');
+
+// 4. Create Legend
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px',
+    backgroundColor: 'white'
+  }
+});
+
+// Add legend title
+var legendTitle = ui.Label({
+  value: 'Kenya Land Cover Classes',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 8px 0',
+    padding: '0'
+  }
+});
+legend.add(legendTitle);
+
+// Create and add the legend items
+for (var i = 0; i < 7; i++) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: kenyaPalette[i],
+      padding: '8px',
+      margin: '0 0 4px 0',
+      border: '1px solid black'
+    }
+  });
+  
+  var description = ui.Label({
+    value: kenyaClassNames[i],
+    style: {margin: '0 0 4px 6px', fontSize: '14px'}
+  });
+  
+  var legendItem = ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+  
+  legend.add(legendItem);
+}
+
+// Add legend to map
+Map.add(legend);
+
+// 5. Calculate Area Statistics in Hectares
+var areaImage = ee.Image.pixelArea().addBands(customClasses);
+
+var areaStats = areaImage.reduceRegion({
+  reducer: ee.Reducer.sum().group({
+    groupField: 1,
+    groupName: 'class',
+  }),
+  geometry: kenya,
+  scale: 500,
+  maxPixels: 1e13
+});
+
+// Convert area from sqm to hectares (1 ha = 10,000 sqm)
+var areaStatsHa = ee.Dictionary(areaStats).map(function(key, value) {
+  return ee.List(value).map(function(group) {
+    var dict = ee.Dictionary(group);
+    return dict.set('area_ha', ee.Number(dict.get('sum')).divide(10000));
+  });
+});
+
+print('Area by Class (ha)', areaStatsHa);
+
+// 6. Create Pie Chart of Land Cover Distribution
+var chart = ui.Chart.image.byClass({
+  image: areaImage,
+  classBand: 'remapped',
+  region: kenya,
+  reducer: ee.Reducer.sum(),
+  scale: 500,
+  classLabels: kenyaClassNames
+}).setOptions({
+  title: 'Kenya Land Cover Distribution (2022) - Area in Hectares',
+  pieHole: 0.4,
+  pieSliceTextStyle: {fontSize: 12},
+  colors: kenyaPalette,
+  legend: {position: 'right'},
+  slices: {0: {offset: 0.2}} // Makes the Forest slice stand out
+});
+
+print(chart);
+
+// 7. Export Options
+// Export custom land cover image to Drive
+Export.image.toDrive({
+  image: customClasses,
+  description: 'Kenya_LULC_Custom_2022',
+  folder: 'GEE_Exports',
+  region: kenya,
+  scale: 500,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// Export area statistics as CSV (in hectares)
+var statsFeatures = ee.FeatureCollection(
+  ee.List(areaStats.get('groups')).map(function(item) {
+    var dict = ee.Dictionary(item);
+    return ee.Feature(null, {
+      'class': dict.get('class'),
+      'class_name': kenyaClassNames[ee.Number(dict.get('class')).toInt()],
+      'area_sqm': dict.get('sum'),
+      'area_ha': ee.Number(dict.get('sum')).divide(10000)
+    });
+  })
+);
+
+Export.table.toDrive({
+  collection: statsFeatures,
+  description: 'Kenya_LULC_Custom_Stats_Ha',
+  fileFormat: 'CSV',
+  selectors: ['class', 'class_name', 'area_ha', 'area_sqm']
+});
