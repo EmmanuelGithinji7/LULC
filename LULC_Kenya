@@ -1,16 +1,14 @@
 // ==============================================
 // KENYA LAND USE/LAND COVER ANALYSIS USING ESA WORLDCOVER
-// Complete GEE Script - Copy/Paste and Run
-// ==============================================
-
+// Complete GEE Script -
 // 1. Define Kenya boundary
 var kenya = ee.FeatureCollection("FAO/GAUL/2015/level0")
               .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
 
 // 2. Load ESA WorldCover data
-var esa2020 = ee.ImageCollection("ESA/WorldCover/v200")
+var esa2020 = ee.ImageCollection("ESA/WorldCover/v100")
                .filterBounds(kenya)
-               .filterDate('2021-01-01', '2021-12-31')
+               .filterDate('2020-01-01', '2020-12-31')
                .first()
                .clip(kenya);
 
