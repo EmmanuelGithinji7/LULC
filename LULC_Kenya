@@ -7,10 +7,10 @@
 var kenya = ee.FeatureCollection("FAO/GAUL/2015/level0")
               .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
 
-// 2. Load ESA WorldCover data (2020 example)
-var esa2020 = ee.ImageCollection("ESA/WorldCover/v100")
+// 2. Load ESA WorldCover data
+var esa2020 = ee.ImageCollection("ESA/WorldCover/v200")
                .filterBounds(kenya)
-               .filterDate('2020-01-01', '2020-12-31')
+               .filterDate('2021-01-01', '2021-12-31')
                .first()
                .clip(kenya);
 
@@ -66,7 +66,7 @@ var areaStats = ee.Image.pixelArea()
       groupName: 'class'
     }),
     geometry: kenya,
-    scale: 10,
+    scale: 100,
     maxPixels: 1e13
   });
 
@@ -92,24 +92,7 @@ classAreas = ee.FeatureCollection(classAreas)
   .filter(ee.Filter.neq('Class', 'null'));
 
 print('Area by Class (hectares):', classAreas);
-// 7. Time-series change detection (2016-2021)
-var esaTimeSeries = ee.ImageCollection("ESA/WorldCover/v100")
-                     .filterBounds(kenya)
-                     .filter(ee.Filter.calendarRange(2016, 2021, 'year'));
 
-// Forest change analysis
-var forestChange = esaTimeSeries.map(function(img) {
-  var year = ee.Date(img.get('system:time_start')).get('year');
-  var forest = img.eq(10).rename('forest'); // ESA Tree Cover class
-  return forest.set('year', year);
-});
-
-// Create forest loss/gain composite
-var forestComposite = forestChange.sum();
-
-// ==============================================
-// VISUALIZATION
-// ==============================================
 
 // Set map center to Kenya
 Map.centerObject(kenya, 6);
@@ -117,7 +100,6 @@ Map.centerObject(kenya, 6);
 // Add layers to map
 Map.addLayer(esa2020, {min:10, max:100, palette: esaPalette}, 'ESA Original 2020');
 Map.addLayer(kenyaClasses, {min:0, max:6, palette: kenyaPalette}, 'Kenya LULC 2020');
-Map.addLayer(forestComposite.selfMask(), {palette: ['yellow','orange','red']}, 'Forest Change 2016-2021');
 
 // Add legend
 var legend = ui.Panel({
@@ -153,6 +135,25 @@ Object.keys(kenyaClassNames).forEach(function(key) {
 });
 
 Map.add(legend);
+// 4. FILTER AND SORT RESULTS
+var finalResults = ee.FeatureCollection(classAreas)
+  .filter(ee.Filter.notNull(['Class']))
+  .filter(ee.Filter.neq('Class', null))
+  .sort('Area_ha', false);
+
+// 5. PRINT FORMATTED RESULTS
+print('Area by Class (hectares):', finalResults);
+
+// 6. OPTIONAL: CREATE A CHART
+var chart = ui.Chart.feature.byFeature(finalResults, 'Class', 'Area_ha')
+  .setChartType('ColumnChart')
+  .setOptions({
+    title: 'Land Cover Area Distribution in Kenya 2021 (ha)',
+    hAxis: {title: 'Land Cover Class'},
+    vAxis: {title: 'Area (hectares)'},
+    legend: {position: 'none'}
+  });
+print(chart);
 
 // ==============================================
 // EXPORTS AND PRINT RESULTS
@@ -161,12 +162,12 @@ Map.add(legend);
 // Print area statistics
 print('Area by Class (hectares):', ee.FeatureCollection(classAreas));
 
-// Export options (uncomment to use)
-/*
+// Export options 
+
 // 1. Export Kenya LULC as GeoTIFF
 Export.image.toDrive({
   image: kenyaClasses,
-  description: 'Kenya_LULC_2020',
+  description: 'Kenya_LULC_2021',
   scale: 10,
   region: kenya,
   fileFormat: 'GeoTIFF',
@@ -176,27 +177,6 @@ Export.image.toDrive({
 // 2. Export area stats as CSV
 Export.table.toDrive({
   collection: ee.FeatureCollection(classAreas),
-  description: 'Kenya_LULC_Area_Stats',
+  description: 'Kenya_LULC2021_Area_Stats',
   fileFormat: 'CSV'
 });
-*/
-
-// ==============================================
-// ADDITIONAL ANALYSIS OPTIONS (UNCOMMENT TO USE)
-// ==============================================
-
-/*
-// A. County-level analysis
-var counties = ee.FeatureCollection("FAO/GAUL/2015/level1")
-                .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
-
-// B. Agricultural expansion analysis
-var cropExpansion = esaTimeSeries.select('Map').eq(40); // Cropland class
-var cropChange = cropExpansion.sum().selfMask();
-Map.addLayer(cropChange, {palette: ['white','yellow','green']}, 'Cropland Expansion');
-
-// C. Urban growth analysis
-var urbanGrowth = esaTimeSeries.select('Map').eq(50); // Built-up class
-var urbanChange = urbanGrowth.sum().selfMask();
-Map.addLayer(urbanChange, {palette: ['white','orange','red']}, 'Urban Growth');
-*/
