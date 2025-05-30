@@ -1,7 +1,6 @@
-// ==============================================
+
 // MODIS LAND USE LAND COVER ANALYSIS FOR KENYA
-// WITH CUSTOM CLASSES AND COLORS (AREA IN HA)
-// ==============================================
+
 
 // 1. Define Region of Interest (Kenya)
 var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
@@ -12,15 +11,15 @@ Map.addLayer(kenya, {color: 'gray'}, 'Kenya Boundary');
 // 2. Load MODIS Land Cover Data (MCD12Q1, 500m)
 var modisLandCover = ee.ImageCollection('MODIS/006/MCD12Q1');
 
-// Get latest available year (2022)
-var lcImage = modisLandCover.filterDate('2019-01-01', '2019-12-31')
+// Select year of Interest
+var lcImage = modisLandCover.filterDate('2020-01-01', '2020-12-31')
   .first();
   
 // Clip after confirming the image exists
 if (lcImage) {
   lcImage = lcImage.clip(kenya);
 } else {
-  throw new Error('No MODIS land cover image found for 2022');
+  throw new Error('No MODIS land cover image found for selected year');
 }
 
 // 3. Reclassify IGBP classes into custom categories with proper water mapping
@@ -33,7 +32,7 @@ var customClasses = lcImage.select('LC_Type1').remap(
 );
 
 
-// Explicitly set water class (IGBP 0) to our water class (4)
+// Classes
 customClasses = customClasses.where(lcImage.select('LC_Type1').eq(0), 4);
 
 // Custom class names and colors - with water properly mapped
@@ -42,7 +41,7 @@ var kenyaClassNames = [
   'Grassland/Rangeland', // 1
   'Agriculture',        // 2
   'Urban/Built-up',     // 3
-  'Water',              // 4 (now properly mapped)
+  'Water',              // 4 
   'Bare Ground',        // 5
   'Other'               // 6
 ];
@@ -52,7 +51,7 @@ var kenyaPalette = [
   'd2b48c', // Grassland/Rangeland (tan)
   'ffff00', // Agriculture (yellow)
   'ff0000', // Urban/Built-up (red)
-  '0000ff', // Water (blue) - now will show for lakes
+  '0000ff', // Water (blue)
   '8b4513', // Bare Ground (brown)
   'ffffff'  // Other (white)
 ];
@@ -132,7 +131,7 @@ var areaStatsHa = ee.Dictionary(areaStats).map(function(key, value) {
 
 print('Area by Class (ha)', areaStatsHa);
 
-// 6. Create Pie Chart of Land Cover Distribution
+// 6. Create Chart of Land Cover Distribution
 var chart = ui.Chart.image.byClass({
   image: areaImage,
   classBand: 'remapped',
@@ -141,7 +140,7 @@ var chart = ui.Chart.image.byClass({
   scale: 500,
   classLabels: kenyaClassNames
 }).setOptions({
-  title: 'Kenya Land Cover Distribution (2022) - Area in Hectares',
+  title: 'Kenya Land Cover Distribution 2020',
   pieHole: 0.4,
   pieSliceTextStyle: {fontSize: 12},
   colors: kenyaPalette,
@@ -151,11 +150,10 @@ var chart = ui.Chart.image.byClass({
 
 print(chart);
 
-// 7. Export Options
 // Export custom land cover image to Drive
 Export.image.toDrive({
   image: customClasses,
-  description: 'Kenya_LULC_Custom_2022',
+  description: 'Kenya_LULC_Custom_2020',
   folder: 'GEE_Exports',
   region: kenya,
   scale: 500,
@@ -163,22 +161,31 @@ Export.image.toDrive({
   fileFormat: 'GeoTIFF'
 });
 
-// Export area statistics as CSV (in hectares)
 var statsFeatures = ee.FeatureCollection(
   ee.List(areaStats.get('groups')).map(function(item) {
     var dict = ee.Dictionary(item);
+    var classNum = ee.Number(dict.get('class')).toInt();
+    var classList = ee.List(kenyaClassNames);
+    var className = ee.Algorithms.If(
+    classNum.lt(classList.size()),
+    classList.get(classNum),
+    "Unknown class"
+);
+    // Safe way to get area (defaults to 0 if 'sum' is missing)
+    var areaSqm = ee.Number(dict.get('sum', 0));
+    
     return ee.Feature(null, {
       'class': dict.get('class'),
-      'class_name': kenyaClassNames[ee.Number(dict.get('class')).toInt()],
-      'area_sqm': dict.get('sum'),
-      'area_ha': ee.Number(dict.get('sum')).divide(10000)
+      'class_name': className,
+      'area_sqm': areaSqm,
+      'area_ha': areaSqm.divide(10000)
     });
   })
 );
 
 Export.table.toDrive({
   collection: statsFeatures,
-  description: 'Kenya_LULC_Custom_Stats_Ha',
+  description: 'Kenya_LULC_Custom_Stats_Ha_2020',
   fileFormat: 'CSV',
   selectors: ['class', 'class_name', 'area_ha', 'area_sqm']
 });
