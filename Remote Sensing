@@ -1,0 +1,99 @@
+// Load the Kenya administrative boundary from FAO GAUL dataset
+var kenya = ee.FeatureCollection("FAO/GAUL/2015/level1")
+               .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'))
+               .geometry();
+
+// Define date range
+var startDate = '2021-01-01';
+var endDate = '2021-12-31';
+
+// Load Sentinel-2 SR imagery
+var s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+            .filterBounds(kenya)
+            .filterDate(startDate, endDate)
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10));
+
+// Create a median composite
+var s2_median = s2.median().clip(kenya);
+
+// Calculate NDVI: (NIR - Red) / (NIR + Red) → Vegetation health
+var ndvi = s2_median.normalizedDifference(['B8', 'B4']).rename('NDVI');
+
+// Calculate NDWI: (Green - NIR) / (Green + NIR) → Water content (wetlands/crops)
+var ndwi = s2_median.normalizedDifference(['B3', 'B8']).rename('NDWI');
+
+// Calculate NDBI: (SWIR - NIR) / (SWIR + NIR) → Built-up areas
+var ndbi = s2_median.normalizedDifference(['B11', 'B8']).rename('NDBI');
+
+// Calculate EVI: Enhanced Vegetation Index (less saturation in dense vegetation)
+var evi = s2_median.expression(
+  '2.5 * (NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1)', {
+    'NIR': s2_median.select('B8'),
+    'RED': s2_median.select('B4'),
+    'BLUE': s2_median.select('B2')
+}).rename('EVI');
+
+// Calculate SAVI: Soil-Adjusted Vegetation Index (accounts for bare soil)
+var savi = s2_median.expression(
+  '(1.5 * (NIR - RED)) / (NIR + RED + 0.5)', {
+    'NIR': s2_median.select('B8'),
+    'RED': s2_median.select('B4')
+}).rename('SAVI');
+
+// Calculate MNDWI: Modified NDWI (better for water vs. vegetation)
+var mndwi = s2_median.normalizedDifference(['B3', 'B11']).rename('MNDWI');
+
+// Calculate BSI: Bare Soil Index → Bare land detection
+var bsi = s2_median.expression(
+  '((RED + SWIR) - (NIR + BLUE)) / ((RED + SWIR) + (NIR + BLUE))', {
+    'RED': s2_median.select('B4'),
+    'SWIR': s2_median.select('B11'),
+    'NIR': s2_median.select('B8'),
+    'BLUE': s2_median.select('B2')
+}).rename('BSI');
+
+// Add all indices to the composite
+var s2_with_indices = s2_median
+  .addBands(ndvi)
+  .addBands(ndwi)
+  .addBands(ndbi)
+  .addBands(evi)
+  .addBands(savi)
+  .addBands(mndwi)
+  .addBands(bsi);
+
+// Visualize RGB
+Map.centerObject(kenya, 6);
+Map.addLayer(s2_median, {
+  bands: ['B4', 'B3', 'B2'],
+  min: 0,
+  max: 3000
+}, 'Sentinel-2 RGB (2021, Cloud <10%)');
+
+// Visualize NDVI (Forests/Cropland)
+Map.addLayer(ndvi, {
+  min: 0,
+  max: 1,
+  palette: ['white', 'green']
+}, 'NDVI (2021)');
+
+// Visualize NDBI (Urban/Built-up)
+Map.addLayer(ndbi, {
+  min: -0.2,
+  max: 0.3,
+  palette: ['blue', 'white', 'red']
+}, 'NDBI (Built-up)');
+
+// Visualize BSI (Bare Soil)
+Map.addLayer(bsi, {
+  min: -0.3,
+  max: 0.3,
+  palette: ['blue', 'white', 'brown']
+}, 'BSI (Bare Soil)');
+
+// Print band names for reference
+print('Available bands:', s2_with_indices.bandNames());
+// Example: Extract tea plantations in Kericho
+var kericho = ee.Geometry.Point([35.2833, -0.3667]); // Kericho coordinates
+var teaMask = ndvi.gt(0.7).and(ndwi.lt(0.3)); // High NDVI, low NDWI
+Map.addLayer(teaMask.selfMask(), {palette: ['green']}, 'Tea Plantations (Kericho)');
