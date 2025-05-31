@@ -1,0 +1,119 @@
+// CUSTOM LAND COVER CLASSIFICATION FOR KENYA
+
+// 1. LOAD KENYA BOUNDARY
+var kenya = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
+var kenyaGeometry = kenya.geometry();
+
+Map.centerObject(kenyaGeometry, 6);
+Map.addLayer(kenya, {color: 'FF0000'}, 'Kenya Boundary');
+
+// 2. DEFINE CLASSES AND COLORS
+var classes = [
+  {name: 'Forest', value: 0, color: '006400'},
+  {name: 'Grassland_Rangeland', value: 1, color: 'A3F5A3'},
+  {name: 'Agriculture', value: 2, color: 'E4F080'},
+  {name: 'Built_up', value: 3, color: 'FF0000'},
+  {name: 'Water', value: 4, color: '0000FF'},
+  {name: 'Bare_Ground', value: 5, color: 'D2B48C'},
+  {name: 'Other', value: 6, color: '808080'}
+];
+
+// 3. PREPARE SENTINEL-2 IMAGERY 
+function prepareImage(year) {
+  var s2 = ee.ImageCollection('COPERNICUS/S2_SR')
+    .filterDate(ee.Date.fromYMD(year, 1, 1), ee.Date.fromYMD(year, 12, 31))
+    .filterBounds(kenyaGeometry)
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10))
+    .map(function(image) {
+      // Apply cloud mask from QA60 band
+      var qa = image.select('QA60');
+      var cloudBitMask = 1 << 10;
+      var cirrusBitMask = 1 << 11;
+      var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+                  .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+      return image.updateMask(mask);
+    });
+  
+  // Compute median composite
+  var median = s2.median().clip(kenya);
+   // Add spectral indices
+  var ndvi = median.normalizedDifference(['B8', 'B4']).rename('NDVI');
+  var ndbi = median.normalizedDifference(['B11', 'B8']).rename('NDBI');
+  var mndwi = median.normalizedDifference(['B3', 'B11']).rename('MNDWI');
+  var evi = median.expression(
+    '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))', {
+      'NIR': median.select('B8'),
+      'RED': median.select('B4'),
+      'BLUE': median.select('B2')
+    }).rename('EVI');
+  
+  // Combine all bands
+  return median
+    .addBands(ndvi)
+    .addBands(ndbi)
+    .addBands(mndwi)
+    .addBands(evi)
+    .addBands(ee.Image(year).rename('year'));
+}
+
+// SAMPLE TRAINING DATA
+var Water = Water2, Forest = Forest2, Agriculture = Agriculture2, Bare_Ground = Bare_Ground2, Grassland = Grassland2, Built_Up = Built_Up2;
+
+// 3. Merge only verified data
+var trainingData = Water.merge(Grassland)
+              .merge(Bare_Ground)
+              .merge(Forest)
+              .merge(Built_Up)
+              .merge(Agriculture);
+// Verify Merged training data
+print('Final training data size:', trainingData.size());
+print('Class distribution:', trainingData.aggregate_histogram('Class'));
+// Take just 100 samples to verify
+
+// classification
+var bands = ['B2', 'B3', 'B4', 'B8', 'B11', 'B12', 'NDVI', 'NDBI', 'MNDWI', 'EVI'];
+var image_training_S2 = prepareImage (2021);
+// 1. Generate random points per polygon (e.g., 50 per polygon)
+var sampledPoints = trainingData.map(function(feature) {
+  // Generate 50 random points inside each polygon
+  var points = ee.FeatureCollection.randomPoints({
+    region: feature.geometry(),
+    points: 50,
+    seed: 42
+  }).map(function(pt) {
+    return pt.set('Class', feature.get('Class')); // retain class label
+  });
+  return points;
+}).flatten(); // Combine all feature collections into one
+
+// 2. Sample the image using only the random points
+var trainingSamples = image_training_S2.select(bands).sampleRegions({
+  collection: sampledPoints,
+  properties: ['Class'],
+  scale: 10,
+  tileScale: 16  // Helps with large image sizes
+});
+
+// 7. Train classifier with additional checks
+
+// 8. Train the classifier
+var classifier = ee.Classifier.smileRandomForest(100)
+  .train({
+    features: trainingSamples,
+    classProperty: 'Class',
+    inputProperties: bands
+  });
+  var classified_Image = image_training_S2.select(bands).classify(classifier);
+  // Visualize results
+var palette = [
+  '338b1b', // Forest (0)
+  'c2925a', // Grassland (1)
+  'ffef4f', // Agriculture (2)
+  'ff0000', // Built_Up (3)
+  '2386d6', // Water (4)
+  '903912'  // Bare_Ground (5)
+];
+// Clip the classification to Kenya boundary
+var classified_clipped = classified_Image.clip(kenya);
+Map.addLayer(classified_clipped, {min: 0, max: 5, palette: palette}, 'LULC Classification');
