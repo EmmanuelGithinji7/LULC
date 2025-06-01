@@ -1,0 +1,146 @@
+// 1. Define Kenya region
+var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
+Map.centerObject(kenya, 6);
+
+// 2. ESA WorldCover color palette
+var esaPalette = [
+  '006400', // 10: Tree cover
+  'ffbb22', // 20: Shrubland
+  'ffff4c', // 30: Grassland
+  'f096ff', // 40: Cropland
+  'fa0000', // 50: Built-up
+  'b4b4b4', // 60: Bare/sparse vegetation
+  'f0f0f0', // 70: Snow/ice
+  '0064c8', // 80: Water
+  '0096a0', // 90: Wetland
+  '00cf75', // 95: Mangroves
+  'fae6a0'  // 100: Moss/lichen
+];
+
+// 3. Load ESA WorldCover (2021)
+var esa = ee.ImageCollection("ESA/WorldCover/v200").first().clip(kenya);
+
+// 4. Load and prepare 2024 Sentinel-2 data
+var s2_2024 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+  .filterBounds(kenya)
+  .filterDate('2021-01-01', '2021-12-31')
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 5))
+  .median()
+  .clip(kenya);
+
+/*
+// 5. Add indices with UNIQUE band names
+var addIndices = function(image) {
+  // Calculate indices
+
+
+  // Select only the bands we need (reduces processing load)
+  return image.select(['B2', 'B3', 'B4', 'B8', 'B11', 'B12'])
+    .addBands([ndvi, ndwi, ndbi]);
+};
+*/
+// 5. Add spectral indices to improve classification
+var addIndices = function(image) {
+  var ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+  var ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI');
+  var ndbi = image.normalizedDifference(['B11', 'B8']).rename('NDBI');
+  return image.addBands([ndvi, ndwi, ndbi]);
+};
+
+var s2_2024 = addIndices(s2_2024);
+// 6. Create training data (ensure unique property names)
+var trainingPoints = esa.stratifiedSample({
+  numPoints: 200,
+  classBand: 'Map',
+  region: kenya,
+  scale: 100,
+  geometries: true
+});
+
+// 7. Sample the image - EXPLICITLY list all property names
+var trainingData = s2_2024.sampleRegions({
+  collection: trainingPoints,
+  properties: ['Map'], // ESA class property
+  scale: 100
+});
+
+// 8. Train classifier with EXPLICIT property list
+var classifier = ee.Classifier.smileRandomForest(150)
+  .train({
+    features: trainingData,
+    classProperty: 'Map',
+    inputProperties: s2_2024.bandNames()
+  });
+
+// 9. Classify the image
+var classified = s2_2024.classify(classifier);
+
+// 10. Post-process with smoothing
+var smoothed = classified.focal_mode({
+  radius: 50,
+  units: 'meters'
+});
+
+// 11. Add to map
+Map.addLayer(s2_2024, {bands: ['B4', 'B3', 'B2'], min: 0, max: 3000}, 'S2 2024 RGB');
+Map.addLayer(smoothed, {min: 10, max: 100, palette: esaPalette}, '2024 Land Cover');
+Map.addLayer(esa, {min: 10, max: 100, palette: esaPalette}, 'ESA WorldCover 2021');
+
+// 12. Add legend
+var esaClassNames = [
+  'Tree cover',        // 10
+  'Shrubland',         // 20
+  'Grassland',         // 30
+  'Cropland',         // 40
+  'Built-up',         // 50
+  'Bare/sparse veg.', // 60
+  'Snow/ice',         // 70
+  'Permanent water',  // 80
+  'Herbaceous wetland', // 90
+  'Mangroves',        // 95
+  'Moss/lichens'      // 100
+];
+
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px'
+  }
+});
+
+legend.add(ui.Label('ESA WorldCover Classes', {fontWeight: 'bold'}));
+
+for (var i = 0; i < 11; i++) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: '#' + esaPalette[i],
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  
+  var description = ui.Label({
+    value: esaClassNames[i],
+    style: {margin: '0 0 4px 6px'}
+  });
+  
+  var legendItem = ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+  
+  legend.add(legendItem);
+}
+
+Map.add(legend);
+// 12. Export (optimized for large areas)
+Export.image.toDrive({
+  image: smoothed,
+  description: 'Kenya_LC_2024_Smoothed',
+  folder: 'GEE_Exports',
+  scale: 20, // Reduced resolution for export
+  region: kenya,
+  maxPixels: 1e10,
+  fileFormat: 'GeoTIFF'
+});
