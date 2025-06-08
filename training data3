@@ -1,6 +1,206 @@
 var Forest = 
     /* color: #006400 */
     /* locked: true */
+    /* displayProperties: [
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "polygon"
+      },
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "rectangle"
+      }
+    ] */
     ee.FeatureCollection(
         [ee.Feature(
             ee.Geometry.Point([37.40938955228082, -0.21272677576700846]),
@@ -355,6 +555,78 @@ var Forest =
             {
               "Class": 0,
               "system:index": "58"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[39.85994164133963, -3.273302193124874],
+                  [39.85994164133963, -3.290868623803445],
+                  [39.87745110178885, -3.290868623803445],
+                  [39.87745110178885, -3.273302193124874]]], null, false),
+            {
+              "Class": 0,
+              "system:index": "59"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[39.91901524574955, -3.228040110086377],
+                  [39.91901524574955, -3.240037269599586],
+                  [39.933091478659705, -3.240037269599586],
+                  [39.933091478659705, -3.228040110086377]]], null, false),
+            {
+              "Class": 0,
+              "system:index": "60"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[41.04550804839062, -1.4045290238856953],
+                  [41.04550804839062, -1.4207460937070149],
+                  [41.063704154347654, -1.4207460937070149],
+                  [41.063704154347654, -1.4045290238856953]]], null, false),
+            {
+              "Class": 0,
+              "system:index": "61"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[40.06917296864695, -1.5369154071942237],
+                  [40.068400492450664, -1.5382882037294936],
+                  [40.06874381520457, -1.5398325987758077],
+                  [40.07097541310496, -1.5404331965472242],
+                  [40.072091212055156, -1.5378592049070707],
+                  [40.0704604289741, -1.5356284096408974]]]),
+            {
+              "Class": 0,
+              "system:index": "62"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[37.35836598347154, -0.3336283633279154],
+                  [37.35836598347154, -0.3640118636097513],
+                  [37.389522523388536, -0.3640118636097513],
+                  [37.389522523388536, -0.3336283633279154]]], null, false),
+            {
+              "Class": 0,
+              "system:index": "63"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[37.36347876969242, -0.27908019583408866],
+                  [37.36347876969242, -0.30379911414003463],
+                  [37.39317618790531, -0.30379911414003463],
+                  [37.39317618790531, -0.27908019583408866]]], null, false),
+            {
+              "Class": 0,
+              "system:index": "64"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[37.50351705237436, -0.11345019675660223],
+                  [37.50351705237436, -0.14143093170692714],
+                  [37.53081121130991, -0.14143093170692714],
+                  [37.53081121130991, -0.11345019675660223]]], null, false),
+            {
+              "Class": 0,
+              "system:index": "65"
             })]),
     Bare_Ground = 
     /* color: #d2b48c */
@@ -601,6 +873,119 @@ var Forest =
     Grassland_Rangeland = 
     /* color: #a3f5a3 */
     /* locked: true */
+    /* displayProperties: [
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "marker"
+      },
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "polygon"
+      },
+      {
+        "type": "polygon"
+      },
+      {
+        "type": "rectangle"
+      }
+    ] */
     ee.FeatureCollection(
         [ee.Feature(
             ee.Geometry.Point([36.914823624069406, -2.0664624100592754]),
@@ -793,6 +1178,61 @@ var Forest =
             {
               "Class": 1,
               "system:index": "31"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[40.46940072659987, 2.169010881559464],
+                  [40.46940072659987, 2.14911229817585],
+                  [40.49111589078444, 2.14911229817585],
+                  [40.49111589078444, 2.169010881559464]]], null, false),
+            {
+              "Class": 1,
+              "system:index": "32"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[41.157445674327725, -1.3707998856298609],
+                  [41.157445674327725, -1.396198363005834],
+                  [41.176414256481046, -1.396198363005834],
+                  [41.176414256481046, -1.3707998856298609]]], null, false),
+            {
+              "Class": 1,
+              "system:index": "33"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[41.123276824855736, -1.4473454450969203],
+                  [41.13391983022683, -1.4463158052032639],
+                  [41.140786285304955, -1.4387650983963638],
+                  [41.13469230642312, -1.4270957751279962],
+                  [41.12241851797097, -1.4297556996297793],
+                  [41.11752616872781, -1.4353329506687633],
+                  [41.115294570827416, -1.4452003614579418]]]),
+            {
+              "Class": 1,
+              "system:index": "34"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[40.66989127450952, -0.6712035146156254],
+                  [40.693151391086666, -0.6827898486880855],
+                  [40.713407433567134, -0.6741215569125486],
+                  [40.71795646005639, -0.6554975513617524],
+                  [40.696155465183345, -0.6500047437836033],
+                  [40.68173590951928, -0.6550684259860129]]]),
+            {
+              "Class": 1,
+              "system:index": "35"
+            }),
+        ee.Feature(
+            ee.Geometry.Polygon(
+                [[[40.51749568811556, -0.45237172817766],
+                  [40.51749568811556, -0.47949332867786026],
+                  [40.55088382593294, -0.47949332867786026],
+                  [40.55088382593294, -0.45237172817766]]], null, false),
+            {
+              "Class": 1,
+              "system:index": "36"
             })]),
     Built_up = 
     /* color: #ff0000 */
@@ -950,6 +1390,7 @@ var Forest =
             })]),
     Agriculture = 
     /* color: #e4f080 */
+    /* locked: true */
     /* displayProperties: [
       {
         "type": "rectangle"
