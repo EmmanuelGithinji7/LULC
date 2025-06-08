@@ -42,21 +42,6 @@ var s2_2021 = prepareS2(2021);
 
 // Points
 
-
-// 6. Convert agriculture polygons to dense points (20 per polygon)
-function polygonToPoints(feature) {
-  return ee.FeatureCollection.randomPoints({
-    region: feature.geometry(),
-    points: 20,
-    seed: 0
-  }).map(function(point) {
-    return point.set('Class', feature.get('Class'));
-  });
-}
-
-
-//var agriPoints = Agriculture.map(polygonToPoints).flatten();
-
 // 7. Combine all training data
 var trainingData = Forest
   .merge(Grassland_Rangeland)
@@ -81,6 +66,7 @@ var classifier = ee.Classifier.smileRandomForest(150)
     classProperty: 'Class',
     inputProperties: s2_2021.bandNames()
   });
+
 
 // 10. Classify the image
 var classified = s2_2021.classify(classifier);
