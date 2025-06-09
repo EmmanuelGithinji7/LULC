@@ -1,0 +1,304 @@
+var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'))
+  .geometry()
+  .simplify({maxError: 1000}); // Simplifies geometry for faster processing
+Map.centerObject(kenya, 6);
+
+var classes = [
+  {name: 'Forest', value: 0, color: '006400'},
+  {name: 'Grassland', value: 1, color: 'A3F5A3'},
+  {name: 'Agriculture', value: 2, color: 'E4F080'},
+  {name: 'Urban', value: 3, color: 'FF0000'},
+  {name: 'Water', value: 4, color: '0000FF'},
+  {name: 'Bare Ground', value: 5, color: 'D2B48C'}
+];
+
+function maskClouds(image) {
+  var scl = image.select('SCL');
+  var cloudMask = scl.neq(8).and(scl.neq(9)); // Mask clouds (8) & cirrus (9)
+  return image.updateMask(cloudMask);
+}
+
+function prepareS2(year) {
+  return ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterBounds(kenya)
+    .filterDate(ee.Date.fromYMD(year, 1, 1), ee.Date.fromYMD(year, 12, 31))
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 5))
+    .map(maskClouds)
+    .map(function(image) {
+      // Calculate spectral indices
+      var ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+      var ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI');
+      var ndbi = image.normalizedDifference(['B11', 'B8']).rename('NDBI');
+      
+      return image
+        .select(['B2', 'B3', 'B4', 'B8', 'B11', 'B12']) // Key bands
+        .addBands([ndvi, ndwi, ndbi]); // Add indices
+    })
+    .median()
+    .clip(kenya);
+}
+var s2_2021 = prepareS2(2021);
+var s2_2022 = prepareS2(2022);
+// Points
+
+// 7. Combine all training data
+var trainingData = Forest
+  .merge(Grassland_Rangeland)
+  .merge(Built_up)
+  .merge(Water)
+  .merge(Bare_Ground)
+  .merge(Agriculture);
+  
+  
+// 8. Sample spectral values from imagery
+var trainingSamples = s2_2021.sampleRegions({
+  collection: trainingData,
+  properties: ['Class'],
+  scale: 20,
+  tileScale: 16 
+});
+
+// 9. Train Random Forest classifier (150 trees for robustness)
+var classifier = ee.Classifier.smileRandomForest(150)
+  .train({
+    features: trainingSamples,
+    classProperty: 'Class',
+    inputProperties: s2_2021.bandNames()
+  });
+
+
+// 10. Classify the image
+var classified = s2_2022.classify(classifier);
+
+// 2. NEW: Urban refinement using NDBI-NDVI
+var s2 = s2_2021.addBands([
+  s2_2021.normalizedDifference(['B11', 'B8']).rename('NDBI'),
+  s2_2021.normalizedDifference(['B8', 'B4']).rename('NDVI')
+]);
+var forestRules = classified
+  // Must have high NDVI (>0.7)
+  .where(s2.select('NDVI').lt(0.7), ee.Image(1)) // Reclass as grassland if NDVI too low
+  
+
+  
+  // Must be contiguous (min 10 connected pixels)
+  .updateMask(classified.eq(0).connectedPixelCount(50).gte(10));
+var grasslandRules = classified
+  // NDVI between 0.4-0.7
+  .where(s2.select('NDVI').lt(0.4), ee.Image(5)) // Too low -> bare ground
+  .where(s2.select('NDVI').gt(0.7), ee.Image(0)) // Too high -> forest
+  
+  // Cannot be in urban areas (NDBI > 0)
+  .where(s2.select('NDBI').gt(0.1), ee.Image(3));
+var agRules = classified
+
+  // Minimum patch size (1 hectare)
+  .updateMask(classified.eq(2).connectedPixelCount(30).gte(10));
+
+var refinedUrban = classified
+  .where(
+    s2.select('NDBI').lt(0.15),
+    classified.eq(3).neq(1).multiply(classified)
+  )
+  .where(
+    s2.select('NDBI').gt(0.25).and(s2.select('NDVI').gt(0.2)),
+    3
+  );
+var waterRules = classified
+  // Must have high NDWI (>0.3) year-round
+  .where(s2.select('NDWI').lt(0.3), ee.Image(1)) // Reclass as grassland
+
+  
+  // Minimum size (0.2 ha)
+  .updateMask(classified.eq(4).connectedPixelCount(20).gte(2));
+var bareRules = classified
+  // Must have very low NDVI (<0.2)
+  .where(s2.select('NDVI').gt(0.2), ee.Image(1)) // Reclass as grassland
+  
+  // High brightness (SWIR > 2000)
+  .where(s2.select('B12').lt(2000), ee.Image(1))
+  
+  // Not near water (500m buffer)
+  .where(classified.eq(4).focal_max(200), ee.Image(4)); // Near water -> water
+  
+// Apply all rules sequentially
+var contextualClassification = classified
+  .where(forestRules.expression('b(0) == 1'), 1) // Forest -> Grassland
+  .where(grasslandRules.expression('b(0) == 5'), 5) // Grassland -> Bare
+  .where(agRules.expression('b(0) == 1'), 1) // Ag -> Grassland
+  .where(refinedUrban.expression('b(0) == 1'), 1) // Urban -> Grassland
+  .where(waterRules.expression('b(0) == 1'), 1) // Water -> Grassland
+  .where(bareRules.expression('b(0) == 4'), 4); // Bare -> Water
+
+// Final smoothing
+var finalClassified = classified
+  .focal_mode({
+  radius: 50,
+  units: 'meters'
+});
+
+
+// 12. Visualization
+var palette = classes.map(function(c) { return c.color; });
+Map.addLayer(finalClassified, {min: 0, max: 5, palette: palette}, 'Land Cover 2021');
+Map.addLayer(s2_2021, {bands: ['B4', 'B3', 'B2'], min: 0, max: 3000}, 'S2 RGB');
+
+// 13. Add legend
+// 8. ADD LEGEND
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px',
+    backgroundColor: 'white'
+  }
+});
+
+var legendTitle = ui.Label({
+  value: 'Land Cover Classes',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '0'
+  }
+});
+
+legend.add(legendTitle);
+
+classes.forEach(function(cls) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: '#' + cls.color,
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  
+  var description = ui.Label({
+    value: cls.name,
+    style: {
+      margin: '0 0 4px 6px'
+    }
+  });
+  
+  var legendItem = ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+  
+  legend.add(legendItem);
+});
+
+Map.add(legend);
+
+
+// 14. Export results
+Export.image.toDrive({
+  image: finalClassified,
+  description: 'Kenya_LandCover',
+  folder: 'GEE_Exports',
+  scale: 30,
+  region: kenya,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+// 5. Calculate Area Statistics in Hectares
+var areaImage = ee.Image.pixelArea().addBands(finalClassified);
+
+var areaStats = areaImage.reduceRegion({
+  reducer: ee.Reducer.sum().group({
+    groupField: 1,
+    groupName: 'class',
+  }),
+  geometry: kenya,
+  scale: 500,
+  maxPixels: 1e13
+});
+
+// Convert area from sqm to hectares (1 ha = 10,000 sqm)
+var areaStatsHa = ee.Dictionary(areaStats).map(function(key, value) {
+  return ee.List(value).map(function(group) {
+    var dict = ee.Dictionary(group);
+    return dict.set('area_ha', ee.Number(dict.get('sum')).divide(10000));
+  });
+});
+
+print('Area by Class (ha)', areaStatsHa);
+
+var kenyaPalette = [
+  '006400', // Forest (dark green)
+  'd2b48c', // Grassland/Rangeland (tan)
+  'ffff00', // Agriculture (yellow)
+  'ff0000', // Urban/Built-up (red)
+  '0000ff', // Water (blue)
+  '8b4513', // Bare Ground (brown)
+  'ffffff'  // Other (white)
+];
+
+// 6. Create Chart of Land Cover Distribution
+var chart = ui.Chart.image.byClass({
+  image: areaImage,
+  classBand: 'remapped',
+  region: kenya,
+  reducer: ee.Reducer.sum(),
+  scale: 500,
+  classLabels: classes
+}).setOptions({
+  title: 'Kenya Land Cover Distribution 2020',
+  pieHole: 0.4,
+  pieSliceTextStyle: {fontSize: 12},
+  colors: kenyaPalette,
+  legend: {position: 'right'},
+  slices: {0: {offset: 0.2}} // Makes the Forest slice stand out
+});
+
+print(chart);
+
+// Export custom land cover image to Drive
+
+
+var statsFeatures = ee.FeatureCollection(
+  ee.List(areaStats.get('groups')).map(function(item) {
+    var dict = ee.Dictionary(item);
+    var classNum = ee.Number(dict.get('class')).toInt();
+    var classList = ee.List(classes);
+    var className = ee.Algorithms.If(
+    classNum.lt(classList.size()),
+    classList.get(classNum),
+    "Unknown class"
+);
+    // Safe way to get area (defaults to 0 if 'sum' is missing)
+    var areaSqm = ee.Number(dict.get('sum', 0));
+    
+    return ee.Feature(null, {
+      'class': dict.get('class'),
+      'class_name': className,
+      'area_sqm': areaSqm,
+      'area_ha': areaSqm.divide(10000)
+    });
+  })
+);
+
+Export.table.toDrive({
+  collection: statsFeatures,
+  description: 'Kenya_LULC_Custom_Stats_Ha_2020',
+  fileFormat: 'CSV',
+  selectors: ['class', 'class_name', 'area_ha', 'area_sqm']
+});
+// 15. Accuracy assessment (optional)
+var split = trainingSamples.randomColumn();
+var trainData = split.filter(ee.Filter.lt('random', 0.7));
+var validData = split.filter(ee.Filter.gte('random', 0.7));
+
+var validatedClassifier = ee.Classifier.smileRandomForest(150)
+  .train({
+    features: trainData,
+    classProperty: 'Class',
+    inputProperties: s2_2021.bandNames()
+  });
+
+var confusionMatrix = validData.classify(validatedClassifier)
+  .errorMatrix('Class', 'classification');
+print('Confusion Matrix:', confusionMatrix);
+print('Overall Accuracy:', confusionMatrix.accuracy());
