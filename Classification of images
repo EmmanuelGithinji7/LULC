@@ -1,0 +1,198 @@
+// 1. Define Kenya boundary with simplification for faster processing
+var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'))
+  .geometry()
+  .simplify({maxError: 1000});
+Map.centerObject(kenya, 6);
+
+// 2. Define land cover classes with names, values, and colors
+var classes = [
+  {name: 'Forest', value: 0, color: '006400'},
+  {name: 'Grassland', value: 1, color: 'A3F5A3'},
+  {name: 'Agriculture', value: 2, color: 'E4F080'},
+  {name: 'Urban', value: 3, color: 'FF0000'},
+  {name: 'Water', value: 4, color: '0000FF'},
+  {name: 'Bare Ground', value: 5, color: 'D2B48C'}
+];
+
+// 3. Function to mask clouds in Sentinel-2 imagery
+function maskClouds(image) {
+  var scl = image.select('SCL');
+  var cloudMask = scl.neq(8).and(scl.neq(9)); // Mask clouds (8) & cirrus (9)
+  return image.updateMask(cloudMask);
+}
+
+// 4. Function to prepare Sentinel-2 data for a given year
+function prepareS2(year) {
+  return ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterBounds(kenya)
+    .filterDate(ee.Date.fromYMD(year, 1, 1), ee.Date.fromYMD(year, 12, 31))
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 5))
+    .map(maskClouds)
+    .map(function(image) {
+      // Calculate spectral indices
+      var ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+      var ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI');
+      var ndbi = image.normalizedDifference(['B11', 'B8']).rename('NDBI');
+      
+      return image
+        .select(['B2', 'B3', 'B4', 'B8', 'B11', 'B12']) // Key bands
+        .addBands([ndvi, ndwi, ndbi]); // Add indices
+    })
+    .median()
+    .clip(kenya);
+}
+
+// 5. Get 2021 Sentinel-2 composite
+var s2_2021 = prepareS2(2021);
+var s2_2023 = prepareS2(2023);
+var s2_2024 = prepareS2(2024);
+var s2_2025 = prepareS2(2025);
+// 6. Combine all training data (assuming these variables are defined elsewhere)
+var trainingData = Forest
+  .merge(Grassland_Rangeland)
+  .merge(Built_up)
+  .merge(Water)
+  .merge(Bare_Ground)
+  .merge(Agriculture);
+
+// 7. Sample spectral values from imagery
+var trainingSamples = s2_2021.sampleRegions({
+  collection: trainingData,
+  properties: ['Class'],
+  scale:20,
+  tileScale: 16
+});
+
+// 8. Train Random Forest classifier
+var classifier = ee.Classifier.smileRandomForest(150)
+  .train({
+    features: trainingSamples,
+    classProperty: 'Class',
+    inputProperties: s2_2021.bandNames()
+  });
+
+// 9. Classify the image
+var classified_2023 = s2_2023.classify(classifier);
+var classified_2024 = s2_2024.classify(classifier);
+var classified_2025 = s2_2025.classify(classifier);
+
+// 11. Final smoothing
+var finalClassified_23 = classified_2023
+  .focal_mode({
+    radius: 50,
+    units: 'meters'
+  });
+
+var finalClassified_24 = classified_2024
+  .focal_mode({
+    radius: 50,
+    units: 'meters'
+  });
+  
+  var finalClassified_25 = classified_2025
+  .focal_mode({
+    radius: 50,
+    units: 'meters'
+  });
+// 12. Visualization
+var palette = classes.map(function(c) { return c.color; });
+Map.addLayer(finalClassified_23, {min: 0, max: 5, palette: palette}, 'Land Cover 2023');
+Map.addLayer(finalClassified_24, {min: 0, max: 5, palette: palette}, 'Land Cover 2024');
+Map.addLayer(finalClassified_25, {min: 0, max: 5, palette: palette}, 'Land Cover 2025');
+Map.addLayer(s2_2021, {bands: ['B4', 'B3', 'B2'], min: 0, max: 3000}, 'S2 RGB');
+
+// 13. Add legend
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px',
+    backgroundColor: 'white'
+  }
+});
+
+var legendTitle = ui.Label({
+  value: 'Land Cover Classes',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '0'
+  }
+});
+
+legend.add(legendTitle);
+
+classes.forEach(function(cls) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: '#' + cls.color,
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  
+  var description = ui.Label({
+    value: cls.name,
+    style: {
+      margin: '0 0 4px 6px'
+    }
+  });
+  
+  var legendItem = ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+  
+  legend.add(legendItem);
+});
+
+Map.add(legend);
+
+// 17. Export classified image
+Export.image.toDrive({
+  image: finalClassified_23,
+  description: 'Kenya_LandCover_2023',
+  folder: 'GEE_Exports',
+  scale: 30,
+  region: kenya,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+Export.image.toDrive({
+  image: finalClassified_24,
+  description: 'Kenya_LandCover_2024',
+  folder: 'GEE_Exports',
+  scale: 30,
+  region: kenya,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+Export.image.toDrive({
+  image: finalClassified_23,
+  description: 'Kenya_LandCover_2025',
+  folder: 'GEE_Exports',
+  scale: 30,
+  region: kenya,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+/*
+// 18. Accuracy assessment
+var split = trainingSamples.randomColumn();
+var trainData = split.filter(ee.Filter.lt('random', 0.7));
+var validData = split.filter(ee.Filter.gte('random', 0.7));
+
+var validatedClassifier = ee.Classifier.smileRandomForest(150)
+  .train({
+    features: trainData,
+    classProperty: 'Class',
+    inputProperties: s2_2021.bandNames()
+  });
+
+var confusionMatrix = validData.classify(validatedClassifier)
+  .errorMatrix('Class', 'classification');
+print('Confusion Matrix:', confusionMatrix);
+print('Overall Accuracy:', confusionMatrix.accuracy());
+*/
