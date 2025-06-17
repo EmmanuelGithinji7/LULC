@@ -1,5 +1,5 @@
 // 1. Load your classified image and Kenya boundary
-var finalClassified = ee.Image('projects/lulc-458707/assets/Kenya_LandCover_2021_Hybrid-0000032768-0000000000');
+var finalClassified = ee.Image('projects/lulc-458707/assets/Kenya_LandCover_2021_Hybrid-0000000000-0000000000');
 var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
   .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
 
@@ -21,7 +21,7 @@ var classAreas = ee.List(classes.map(function(cls) {
   var areaStats = areaImage.updateMask(mask).reduceRegion({
     reducer: ee.Reducer.sum(),
     geometry: kenya,
-    scale: 30, // Match your classification resolution
+    scale: 100, // Match your classification resolution
     maxPixels: 1e13,
     tileScale: 4 // Helps with large computations
   });
