@@ -1,0 +1,132 @@
+// 1. Load your classified image and Kenya boundary
+var finalClassified = ee.Image('projects/lulc-458707/assets/Kenya_LandCover_2021_Hybrid-0000032768-0000000000');
+var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
+  .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
+
+// 2. Define your exact land cover classes
+var classes = [
+  {name: 'Forest', value: 0, color: '006400'},
+  {name: 'Grassland', value: 1, color: 'A3F5A3'},
+  {name: 'Agriculture', value: 2, color: 'E4F080'},
+  {name: 'Urban', value: 3, color: 'FF0000'},
+  {name: 'Water', value: 4, color: '0000FF'},
+  {name: 'Bare Ground', value: 5, color: 'D2B48C'}
+];
+
+// 3. Calculate area for each class in hectares
+var areaImage = ee.Image.pixelArea().divide(10000); // Convert to hectares
+
+var classAreas = ee.List(classes.map(function(cls) {
+  var mask = finalClassified.eq(cls.value); // Create mask for current class
+  var areaStats = areaImage.updateMask(mask).reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: kenya,
+    scale: 30, // Match your classification resolution
+    maxPixels: 1e13,
+    tileScale: 4 // Helps with large computations
+  });
+  
+  var area = ee.Number(areaStats.get('area'));
+  var percentage = area.divide(areaImage.clip(kenya).reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: kenya,
+    scale: 30,
+    maxPixels: 1e13
+  }).get('area')).multiply(100);
+  
+  return ee.Feature(null, {
+    'Class_ID': cls.value,
+    'Class_Name': cls.name,
+    'Area_ha': area,
+    'Percentage': percentage,
+    'Color': cls.color
+  });
+}));
+
+var areasFC = ee.FeatureCollection(classAreas);
+print('Area by Land Cover Class:', areasFC);
+
+// 4. Create enhanced visualization
+var chart = ui.Chart.feature.byFeature({
+  features: areasFC,
+  xProperty: 'Class_Name',
+  yProperties: ['Area_ha', 'Percentage']
+})
+.setChartType('ColumnChart')
+.setOptions({
+  title: 'Kenya Land Cover Statistics (2021)',
+  hAxis: {
+    title: 'Land Cover Class',
+    titleTextStyle: {bold: true}
+  },
+  vAxes: {
+    0: {title: 'Area (hectares)', minValue: 0},
+    1: {title: 'Percentage (%)', minValue: 0, maxValue: 100}
+  },
+  colors: ['#006400', '#4CAF50'], // Primary and secondary colors
+  series: {
+    0: {targetAxisIndex: 0},
+    1: {targetAxisIndex: 1, type: 'line'}
+  },
+  chartArea: {width: '85%', height: '70%'}
+});
+
+print(chart);
+
+// 5. Export comprehensive results
+
+
+
+// 6. Visualize classification with legend
+var visParams = {
+  min: 0,
+  max: 5,
+  palette: classes.map(function(c) { return c.color; })
+};
+
+Map.addLayer(finalClassified.clip(kenya), visParams, 'Kenya Land Cover 2021');
+Map.centerObject(kenya, 6);
+
+// Add legend (requires ui.Panel)
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px'
+  }
+});
+
+var legendTitle = ui.Label({
+  value: 'Land Cover Classes',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '0'
+  }
+});
+
+legend.add(legendTitle);
+
+classes.forEach(function(cls) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: '#' + cls.color,
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  
+  var description = ui.Label({
+    value: cls.name,
+    style: {margin: '0 0 4px 6px'}
+  });
+  
+  var legendItem = ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+  
+  legend.add(legendItem);
+});
+
+Map.add(legend);
