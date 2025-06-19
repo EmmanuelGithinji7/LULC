@@ -1,5 +1,5 @@
 // 1. Load your classified image and Kenya boundary
-var finalClassified = ee.Image('projects/lulc-458707/assets/Kenya_LandCover_2021_Hybrid-0000000000-0000000000');
+
 var kenya = ee.FeatureCollection('FAO/GAUL/2015/level0')
   .filter(ee.Filter.eq('ADM0_NAME', 'Kenya'));
 
@@ -17,11 +17,11 @@ var classes = [
 var areaImage = ee.Image.pixelArea().divide(10000); // Convert to hectares
 
 var classAreas = ee.List(classes.map(function(cls) {
-  var mask = finalClassified.eq(cls.value); // Create mask for current class
+  var mask = image.eq(cls.value); // Create mask for current class
   var areaStats = areaImage.updateMask(mask).reduceRegion({
     reducer: ee.Reducer.sum(),
     geometry: kenya,
-    scale: 100, // Match your classification resolution
+    scale: 50, // Match your classification resolution
     maxPixels: 1e13,
     tileScale: 4 // Helps with large computations
   });
@@ -54,7 +54,7 @@ var chart = ui.Chart.feature.byFeature({
 })
 .setChartType('ColumnChart')
 .setOptions({
-  title: 'Kenya Land Cover Statistics (2021)',
+  title: 'Kenya Land Cover Statistics (2024)',
   hAxis: {
     title: 'Land Cover Class',
     titleTextStyle: {bold: true}
@@ -84,7 +84,7 @@ var visParams = {
   palette: classes.map(function(c) { return c.color; })
 };
 
-Map.addLayer(finalClassified.clip(kenya), visParams, 'Kenya Land Cover 2021');
+Map.addLayer(image.clip(kenya), visParams, 'Kenya Land Cover 2024');
 Map.centerObject(kenya, 6);
 
 // Add legend (requires ui.Panel)
@@ -130,3 +130,10 @@ classes.forEach(function(cls) {
 });
 
 Map.add(legend);
+// 4. Export results
+Export.table.toDrive({
+  collection: areasFC,
+  description: 'Kenya_LULC_Stats_2024',
+  fileFormat: 'CSV',
+  selectors: ['Year', 'Class', 'Area_ha', 'Percentage']
+});
