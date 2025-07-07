@@ -93,7 +93,4 @@ Map.addLayer(bsi, {
 
 // Print band names for reference
 print('Available bands:', s2_with_indices.bandNames());
-// Example: Extract tea plantations in Kericho
-var kericho = ee.Geometry.Point([35.2833, -0.3667]); // Kericho coordinates
-var teaMask = ndvi.gt(0.7).and(ndwi.lt(0.3)); // High NDVI, low NDWI
-Map.addLayer(teaMask.selfMask(), {palette: ['green']}, 'Tea Plantations (Kericho)');
+
