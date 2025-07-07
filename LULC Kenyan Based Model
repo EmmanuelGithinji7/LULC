@@ -133,56 +133,7 @@ classes.forEach(function(cls) {
 });
 
 Map.add(legend);
-/*
-// 14. Calculate area for each class in hectares
-var areaImage = ee.Image.pixelArea().divide(10000); // Convert to hectares
-var classAreas = ee.List(classes.map(function(cls) {
-  var mask = finalClassified.eq(cls.value);
-  var area = areaImage.updateMask(mask).reduceRegion({
-    reducer: ee.Reducer.sum(),
-    geometry: kenya,
-    scale: 500,
-    maxPixels: 1e13
-  }).get('area');
-  
-  return ee.Feature(null, {
-    'Class': cls.name,
-    'Area_ha': area,
-    'Color': cls.color
-  });
-}));
 
-var areasFC = ee.FeatureCollection(classAreas);
-print('Area by Land Cover Class (ha):', areasFC);
-
-// 15. Create and display a bar chart
-var chart = ui.Chart.feature.byFeature({
-  features: areasFC,
-  xProperty: 'Class',
-  yProperties: ['Area_ha']
-})
-.setChartType('ColumnChart')
-.setOptions({
-  title: 'Land Cover Area in Kenya (2021)',
-  hAxis: {title: 'Land Cover Class'},
-  vAxis: {title: 'Area (hectares)'},
-  colors: classes.map(function(c) { return '#' + c.color; }),
-  legend: {position: 'none'},
-  bar: {groupWidth: '75%'},
-  isStacked: true
-});
-
-print(chart);
-
-// 16. Export the area data as a CSV table
-Export.table.toDrive({
-  collection: areasFC,
-  description: 'Kenya_LandCover_Areas_2021',
-  folder: 'GEE_Exports',
-  fileFormat: 'CSV',
-  selectors: ['Class', 'Area_ha']
-});
-*/
 // 17. Export classified image
 Export.image.toDrive({
   image: finalClassified,
